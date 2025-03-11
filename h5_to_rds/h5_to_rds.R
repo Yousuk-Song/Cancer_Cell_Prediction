@@ -18,9 +18,9 @@ h5_file <- args[1]        # HDF5 파일 경로
 metadata_tsv <- args[2]   # 메타데이터 TSV 파일
 sample_name <- args[3]    # 샘플명 (Python 코드에서 name에 해당)
 
-h5_file <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/batch_1/GSM4476485.h5"        # HDF5 파일 경로
-metadata_tsv <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/MetaData/BRCA_GSE148673_CellMetainfo_table.tsv"   # 메타데이터 TSV 파일
-sample_name <- "GSM4476485"    # 샘플명 (Python 코드에서 name에 해당)
+#h5_file <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/batch_1/GSM4476485.h5"        # HDF5 파일 경로
+#metadata_tsv <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/MetaData/BRCA_GSE148673_CellMetainfo_table.tsv"   # 메타데이터 TSV 파일
+#sample_name <- "GSM4476485"    # 샘플명 (Python 코드에서 name에 해당)
 
 
 # 🔹 HDF5 파일 읽기
@@ -100,3 +100,4 @@ print(paste("✅ Seurat object has been successfully created and saved as", outp
 
 # HDF5 파일 닫기
 h5$close()
+
