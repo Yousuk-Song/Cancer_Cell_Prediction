@@ -10,17 +10,20 @@ library(data.table)
 
 # 🔹 명령줄 인자로 HDF5 파일 및 메타데이터 TSV 파일 받기
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 3) {
-  stop("Usage: Rscript h5_to_seurat_full.R <h5_file> <metadata_tsv> <sample_name>")
+if (length(args) != 4) {
+  stop("Usage: Rscript h5_to_seurat_full.R <h5_file> <metadata_tsv> <sample_name> {cancer_type}")
 }
 
 h5_file <- args[1]        # HDF5 파일 경로
 metadata_tsv <- args[2]   # 메타데이터 TSV 파일
-sample_name <- args[3]    # 샘플명 (Python 코드에서 name에 해당)
+sample_name <- args[3]    # 샘플명 (Python 코드에서 name에 해당)]
+cancer_type <- args[4]    # 암종 ex) BRCA, AML, AEL
 
 #h5_file <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/batch_1/GSM4476485.h5"        # HDF5 파일 경로
 #metadata_tsv <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/MetaData/BRCA_GSE148673_CellMetainfo_table.tsv"   # 메타데이터 TSV 파일
 #sample_name <- "GSM4476485"    # 샘플명 (Python 코드에서 name에 해당)
+#cancer_type <- "BRCA"
+
 
 
 # 🔹 HDF5 파일 읽기
@@ -54,41 +57,44 @@ colnames(metadata) <- colnames(metadata) %>%
   str_replace_all("[()]", "") %>%  # 괄호 제거
   str_replace_all("\\s+", "_")      # 공백을 언더바(_)로 변환
 
-# 🔹 Cell ID 정리 (`-1` 제거 및 `@` 처리)
+# 🔹 `Cell`에서 샘플 정보(`Sample`)와 `Cell ID` 분리
 metadata <- metadata %>%
   mutate(
-    Cell.x = Cell,  # 원본 Cell ID 저장
-    Sample = str_extract(Cell, "^[^@]+"),  # @ 앞부분 추출 (샘플 정보)
-    Cell_suffix = str_extract(Cell, "(?<=@).*"),  # @ 뒤의 값만 유지
-    Cell = gsub("-1$", "", Cell_suffix)  # 최종 Cell ID 정리
+    Sample = str_extract(Cell, "^[^@]+"),  # `@` 앞부분을 `Sample` 컬럼으로 저장
+    Cell = str_extract(Cell, "(?<=@).*")   # `@` 이후 부분만 `Cell`에 저장
   )
 
-# 🔹 Expression Matrix의 Cell 바코드도 동일하게 정리
+# 🔹 `Sample`이 `sample_name`과 일치하는 경우만 필터링
+metadata <- metadata %>%
+  filter(Sample == sample_name)
+
+# 🔹 Expression Matrix의 Cell 바코드 정리 (`sample_name_` 추가)
 cell_barcodes_clean <- gsub("-1$", "", sub(".*@", "", cell_barcodes))
-colnames(expr_matrix) <- cell_barcodes_clean
-
-# 🔹 모든 Cell ID에 `sample_name_` 추가
 cell_barcodes_renamed <- paste0(sample_name, "_", cell_barcodes_clean)
-metadata$Cell <- paste0(sample_name, "_", metadata$Cell)
-
-# 🔹 Expression Matrix 컬럼 이름 변경
 colnames(expr_matrix) <- cell_barcodes_renamed
+
+# 🔹 메타데이터의 `Cell`에도 `sample_name_` 추가
+metadata$Cell <- paste0(sample_name, "_", metadata$Cell)
 
 # 🔹 Expression Matrix와 메타데이터에서 공통된 Cell만 필터링
 common_cells <- intersect(colnames(expr_matrix), metadata$Cell)
-common_cells
-
-expr_matrix_filtered <- expr_matrix[, colnames(expr_matrix) %in% common_cells]
+expr_matrix_filtered <- expr_matrix[, common_cells]
 metadata_filtered <- metadata %>% filter(Cell %in% common_cells)
 
 # 🔹 불필요한 열 제거
 metadata_filtered <- metadata_filtered %>%
-  select(-Cell.x, -Cell_suffix)
+  select(-Sample)  # `Sample`은 이제 필요 없으면 제거 가능
 
+# 🔹 Cancer Type 컬럼 추가 (모든 셀에 동일한 값)
+metadata_filtered$CancerType <- cancer_type
 
 # 🔹 Seurat 객체 생성
+rownames(metadata_filtered) <- metadata_filtered$Cell
+metadata_filtered <- metadata_filtered %>% select(-Cell)  # `Cell` 컬럼 삭제 (이미 rownames로 이동)
+
 seurat_obj <- CreateSeuratObject(counts = expr_matrix_filtered, meta.data = metadata_filtered)
 
+# 🔹 orig.ident 값 설정
 seurat_obj@meta.data$orig.ident <- sample_name
 
 # 🔹 RDS 파일 저장 (H5 파일명 기반)
@@ -100,4 +106,5 @@ print(paste("✅ Seurat object has been successfully created and saved as", outp
 
 # HDF5 파일 닫기
 h5$close()
+
 
