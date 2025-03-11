@@ -11,19 +11,28 @@ library(data.table)
 # 🔹 명령줄 인자로 HDF5 파일 및 메타데이터 TSV 파일 받기
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 4) {
-  stop("Usage: Rscript h5_to_seurat_full.R <h5_file> <metadata_tsv> <sample_name> {cancer_type}")
+  stop("Usage: Rscript h5_to_seurat_full.R <h5_file> <metadata_tsv> <sample_name> <cancer_type>")
 }
 
 h5_file <- args[1]        # HDF5 파일 경로
 metadata_tsv <- args[2]   # 메타데이터 TSV 파일
-sample_name <- args[3]    # 샘플명 (Python 코드에서 name에 해당)]
+sample_name <- args[3]    # 샘플명 (Python 코드에서 name에 해당)
 cancer_type <- args[4]    # 암종 ex) BRCA, AML, AEL
 
-#h5_file <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/batch_1/GSM4476485.h5"        # HDF5 파일 경로
-#metadata_tsv <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/MetaData/BRCA_GSE148673_CellMetainfo_table.tsv"   # 메타데이터 TSV 파일
-#sample_name <- "GSM4476485"    # 샘플명 (Python 코드에서 name에 해당)
-#cancer_type <- "BRCA"
+#h5_file <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/batch_1/GSM2758472.h5"        # HDF5 파일 경로
+#metadata_tsv <- "/data/processed_data/scRSEQ_AML/DISCO/BATCH/MetaData/Glioma_GSE103224_CellMetainfo_table.tsv"   # 메타데이터 TSV 파일
+#sample_name <- "GSM2758471"    # 샘플명 (Python 코드에서 name에 해당)
+#cancer_type <- "Glioma"    # 암종 ex) BRCA, AML, AEL
 
+# 파일명만 추출
+
+meta_filename <- basename(metadata_tsv)
+
+# "_" 기준으로 split
+split_parts <- strsplit(meta_filename, "_")[[1]]
+
+# "_" 기준으로 split하여 두 번째 요소 추출
+project_id <- strsplit(meta_filename, "_")[[1]][2]
 
 
 # 🔹 HDF5 파일 읽기
@@ -60,8 +69,8 @@ colnames(metadata) <- colnames(metadata) %>%
 # 🔹 `Cell`에서 샘플 정보(`Sample`)와 `Cell ID` 분리
 metadata <- metadata %>%
   mutate(
-    Sample = str_extract(Cell, "^[^@]+"),  # `@` 앞부분을 `Sample` 컬럼으로 저장
-    Cell = str_extract(Cell, "(?<=@).*")   # `@` 이후 부분만 `Cell`에 저장
+    Sample = ifelse(str_detect(Cell, "@"), str_extract(Cell, "^[^@]+"), sample_name),  # `@` 앞부분을 `Sample` 컬럼으로 저장 (없으면 sample_name 사용)
+    Cell = ifelse(str_detect(Cell, "@"), str_extract(Cell, "(?<=@).*"), Cell)  # `@` 이후 부분만 `Cell`에 저장 (없으면 그대로 유지)
   )
 
 # 🔹 `Sample`이 `sample_name`과 일치하는 경우만 필터링
@@ -98,7 +107,19 @@ seurat_obj <- CreateSeuratObject(counts = expr_matrix_filtered, meta.data = meta
 seurat_obj@meta.data$orig.ident <- sample_name
 
 # 🔹 RDS 파일 저장 (H5 파일명 기반)
+# .h5 확장자를 .rds로 변경
 output_rds <- gsub("\\.h5$", ".rds", h5_file)
+
+# 경로와 파일명 분리
+output_dir <- dirname(output_rds)  # 경로 추출
+output_filename <- basename(output_rds)  # 파일명 추출
+
+# 최종 경로 조합
+output_rds <- file.path(output_dir, paste0(project_id, "_", output_filename))
+
+# 결과 출력
+print(output_rds)
+
 saveRDS(seurat_obj, file = output_rds)
 
 # 결과 메시지 출력
@@ -106,5 +127,3 @@ print(paste("✅ Seurat object has been successfully created and saved as", outp
 
 # HDF5 파일 닫기
 h5$close()
-
-
