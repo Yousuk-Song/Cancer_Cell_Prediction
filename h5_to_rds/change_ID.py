@@ -33,3 +33,6 @@ if __name__ == "__main__":
             replacements[old] = new
 
     replace_cell_ids(input_file, output_file, replacements)
+
+
+# example: python script.py AEL_GSE142213_CellMetainfo_table.tsv --replace=OX1164=GSM4222796
