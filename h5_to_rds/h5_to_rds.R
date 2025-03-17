@@ -25,7 +25,6 @@ cancer_type <- args[4]    # 암종 ex) BRCA, AML, AEL
 #cancer_type <- "Glioma"    # 암종 ex) BRCA, AML, AEL
 
 # 파일명만 추출
-
 meta_filename <- basename(metadata_tsv)
 
 # "_" 기준으로 split
@@ -33,7 +32,6 @@ split_parts <- strsplit(meta_filename, "_")[[1]]
 
 # "_" 기준으로 split하여 두 번째 요소 추출
 project_id <- strsplit(meta_filename, "_")[[1]][2]
-
 
 # 🔹 HDF5 파일 읽기
 h5 <- H5File$new(h5_file, mode = "r")
@@ -58,6 +56,10 @@ expr_matrix <- sparseMatrix(
   dimnames = list(gene_names, cell_barcodes)
 )
 
+# 변경 (행: 세포, 열: 유전자)
+expr_matrix <- t(expr_matrix)
+
+
 # 🔹 메타데이터 불러오기
 metadata <- fread(metadata_tsv, data.table = FALSE)
 
@@ -65,6 +67,7 @@ metadata <- fread(metadata_tsv, data.table = FALSE)
 colnames(metadata) <- colnames(metadata) %>%
   str_replace_all("[()]", "") %>%  # 괄호 제거
   str_replace_all("\\s+", "_")      # 공백을 언더바(_)로 변환
+
 
 # 🔹 `Cell`에서 샘플 정보(`Sample`)와 `Cell ID` 분리
 metadata <- metadata %>%
@@ -77,17 +80,21 @@ metadata <- metadata %>%
 metadata <- metadata %>%
   filter(Sample == sample_name)
 
+
 # 🔹 Expression Matrix의 Cell 바코드 정리 (`sample_name_` 추가)
 cell_barcodes_clean <- gsub("-1$", "", sub(".*@", "", cell_barcodes))
 cell_barcodes_renamed <- paste0(sample_name, "_", cell_barcodes_clean)
-colnames(expr_matrix) <- cell_barcodes_renamed
+rownames(expr_matrix) <- cell_barcodes_renamed
 
 # 🔹 메타데이터의 `Cell`에도 `sample_name_` 추가
 metadata$Cell <- paste0(sample_name, "_", metadata$Cell)
+metadata$Cell <- gsub("-1$", "", metadata$Cell)
 
 # 🔹 Expression Matrix와 메타데이터에서 공통된 Cell만 필터링
-common_cells <- intersect(colnames(expr_matrix), metadata$Cell)
-expr_matrix_filtered <- expr_matrix[, common_cells]
+common_cells <- intersect(rownames(expr_matrix), metadata$Cell)
+
+
+expr_matrix_filtered <- expr_matrix[common_cells,]
 metadata_filtered <- metadata %>% filter(Cell %in% common_cells)
 
 # 🔹 불필요한 열 제거
@@ -96,6 +103,9 @@ metadata_filtered <- metadata_filtered %>%
 
 # 🔹 Cancer Type 컬럼 추가 (모든 셀에 동일한 값)
 metadata_filtered$CancerType <- cancer_type
+
+# 🔹 Project ID 컬럼 추가 (모든 셀에 동일한 값)
+metadata_filtered$ProjectID <- project_id
 
 # 🔹 Seurat 객체 생성
 rownames(metadata_filtered) <- metadata_filtered$Cell
@@ -106,16 +116,12 @@ seurat_obj <- CreateSeuratObject(counts = expr_matrix_filtered, meta.data = meta
 # 🔹 orig.ident 값 설정
 seurat_obj@meta.data$orig.ident <- sample_name
 
+# 🔹 프로젝트 ID 기반 출력 디렉토리 생성
+output_dir <- file.path(dirname(h5_file), project_id)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
 # 🔹 RDS 파일 저장 (H5 파일명 기반)
-# .h5 확장자를 .rds로 변경
-output_rds <- gsub("\\.h5$", ".rds", h5_file)
-
-# 경로와 파일명 분리
-output_dir <- dirname(output_rds)  # 경로 추출
-output_filename <- basename(output_rds)  # 파일명 추출
-
-# 최종 경로 조합
-output_rds <- file.path(output_dir, paste0(project_id, "_", output_filename))
+output_rds <- file.path(output_dir, paste0(project_id, "_", gsub("\\.h5$", ".rds", basename(h5_file))))
 
 # 결과 출력
 print(output_rds)
@@ -123,7 +129,7 @@ print(output_rds)
 saveRDS(seurat_obj, file = output_rds)
 
 # 결과 메시지 출력
-print(paste("✅ Seurat object has been successfully created and saved as", output_rds))
+print(paste("✅ Seurat object has been successfully created and saved in", output_rds))
 
 # HDF5 파일 닫기
 h5$close()
